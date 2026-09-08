@@ -50,6 +50,7 @@ COPY run.py config.py log.py version.py check_config.py build_sites.py dbscript_
 COPY requirements.txt third_party.txt package_list.txt ${WORKDIR}/
 # 豆瓣防盗链修复 modify by vv 20260908 starting
 RUN git apply patch/douban-image-fix.patch
+RUN git apply patch/douban-image-domain-fix.patch
 # 豆瓣防盗链修复 modify by vv 20260908 ending  
 EXPOSE 3000
 VOLUME ["/config"]

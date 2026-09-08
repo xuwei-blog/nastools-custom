@@ -1,6 +1,6 @@
-diff -ruN --strip-trailing-cr a/app/message/client/telegram.py b/app/message/client/telegram.py
+diff -ruN a/app/message/client/telegram.py b_base/app/message/client/telegram.py
 --- a/app/message/client/telegram.py	2026-09-07 16:33:58.857371800 +0800
-+++ b/app/message/client/telegram.py	2026-09-07 16:35:04.873655700 +0800
++++ b_base/app/message/client/telegram.py	2026-09-08 16:23:46.239856100 +0800
 @@ -6,7 +6,7 @@
  import log
  from app.helper import ThreadHelper
@@ -19,9 +19,9 @@ diff -ruN --strip-trailing-cr a/app/message/client/telegram.py b/app/message/cli
                  if photo_req and photo_req.content:
                      sc_url = "https://api.telegram.org/bot%s/sendPhoto" % self._telegram_token
                      data = {"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"}
-diff -ruN --strip-trailing-cr a/app/message/client/wechat.py b/app/message/client/wechat.py
+diff -ruN a/app/message/client/wechat.py b_base/app/message/client/wechat.py
 --- a/app/message/client/wechat.py	2026-09-07 16:33:58.832268900 +0800
-+++ b/app/message/client/wechat.py	2026-09-07 16:35:04.855939800 +0800
++++ b_base/app/message/client/wechat.py	2026-09-08 16:23:46.224057800 +0800
 @@ -3,8 +3,8 @@
  from datetime import datetime
  
@@ -46,9 +46,9 @@ diff -ruN --strip-trailing-cr a/app/message/client/wechat.py b/app/message/clien
                  "url": media.get_detail_url()
              })
              index += 1
-diff -ruN --strip-trailing-cr a/app/message/message.py b/app/message/message.py
+diff -ruN a/app/message/message.py b_base/app/message/message.py
 --- a/app/message/message.py	2026-09-07 16:33:58.772490100 +0800
-+++ b/app/message/message.py	2026-09-07 16:35:04.809829400 +0800
++++ b_base/app/message/message.py	2026-09-08 16:23:46.251563900 +0800
 @@ -6,7 +6,7 @@
  from app.conf import ModuleConf
  from app.helper import DbHelper, SubmoduleHelper
@@ -68,9 +68,9 @@ diff -ruN --strip-trailing-cr a/app/message/message.py b/app/message/message.py
          state, ret_msg = client.get('client').send_msg(title=title,
                                                         text=text,
                                                         image=image,
-diff -ruN --strip-trailing-cr a/app/utils/__init__.py b/app/utils/__init__.py
+diff -ruN a/app/utils/__init__.py b_base/app/utils/__init__.py
 --- a/app/utils/__init__.py	2026-09-07 16:33:58.697126400 +0800
-+++ b/app/utils/__init__.py	2026-09-07 16:35:04.712915600 +0800
++++ b_base/app/utils/__init__.py	2026-09-08 16:23:46.200996700 +0800
 @@ -1,6 +1,7 @@
  from .dom_utils import DomUtils
  from .episode_format import EpisodeFormat
@@ -79,9 +79,9 @@ diff -ruN --strip-trailing-cr a/app/utils/__init__.py b/app/utils/__init__.py
  from .json_utils import JsonUtils
  from .number_utils import NumberUtils
  from .path_utils import PathUtils
-diff -ruN --strip-trailing-cr a/app/utils/image_utils.py b/app/utils/image_utils.py
+diff -ruN a/app/utils/image_utils.py b_base/app/utils/image_utils.py
 --- a/app/utils/image_utils.py	1970-01-01 08:00:00.000000000 +0800
-+++ b/app/utils/image_utils.py	2026-09-07 16:35:04.732456800 +0800
++++ b_base/app/utils/image_utils.py	2026-09-08 16:23:46.322387100 +0800
 @@ -0,0 +1,48 @@
 +from urllib.parse import quote, urlparse
 +
@@ -131,9 +131,9 @@ diff -ruN --strip-trailing-cr a/app/utils/image_utils.py b/app/utils/image_utils
 +        if ImageUtils.is_douban_image(url):
 +            return RequestUtils(referer=DOUBAN_IMAGE_REFERER, proxies=proxies).get_res(url)
 +        return RequestUtils(proxies=proxies).get_res(url)
-diff -ruN --strip-trailing-cr a/web/main.py b/web/main.py
+diff -ruN a/web/main.py b_base/web/main.py
 --- a/web/main.py	2026-09-07 16:33:58.730186500 +0800
-+++ b/web/main.py	2026-09-07 16:35:04.768763800 +0800
++++ b_base/web/main.py	2026-09-08 16:23:46.113523500 +0800
 @@ -34,7 +34,7 @@
  from app.subscribe import Subscribe
  from app.sync import Sync
@@ -168,9 +168,9 @@ diff -ruN --strip-trailing-cr a/web/main.py b/web/main.py
 +    resp.headers['Content-Type'] = r.headers.get('Content-Type', 'image/jpeg')
 +    resp.headers['Cache-Control'] = 'public, max-age=604800'
 +    return resp
-diff -ruN --strip-trailing-cr a/web/static/components/card/normal/index.js b/web/static/components/card/normal/index.js
+diff -ruN a/web/static/components/card/normal/index.js b_base/web/static/components/card/normal/index.js
 --- a/web/static/components/card/normal/index.js	2026-09-07 16:33:59.061656700 +0800
-+++ b/web/static/components/card/normal/index.js	2026-09-07 16:35:04.997121400 +0800
++++ b_base/web/static/components/card/normal/index.js	2026-09-08 16:23:46.131447400 +0800
 @@ -120,7 +120,7 @@
          ${this._placeholder ? NormalCardPlaceholder.render_placeholder() : nothing}
          <div ?hidden=${this._placeholder} class="rounded-4">
@@ -180,9 +180,9 @@ diff -ruN --strip-trailing-cr a/web/static/components/card/normal/index.js b/web
               @error=${() => { if (this.lazy != "1") {this.image = Golbal.noImage; this._card_image_error = true} }}
               @load=${() => { this._placeholder = false }}/>
            ${this._render_left_up()}
-diff -ruN --strip-trailing-cr a/web/static/components/custom/img/index.js b/web/static/components/custom/img/index.js
+diff -ruN a/web/static/components/custom/img/index.js b_base/web/static/components/custom/img/index.js
 --- a/web/static/components/custom/img/index.js	2026-09-07 16:33:58.993474600 +0800
-+++ b/web/static/components/custom/img/index.js	2026-09-07 16:35:04.962623800 +0800
++++ b_base/web/static/components/custom/img/index.js	2026-09-08 16:23:46.165057900 +0800
 @@ -77,7 +77,7 @@
          <img ?hidden=${this._placeholder} alt=""
            class=${this.img_class}
@@ -192,9 +192,9 @@ diff -ruN --strip-trailing-cr a/web/static/components/custom/img/index.js b/web/
            @error=${() => { if (this.lazy != "1" && this.img_error == "1") { this.img_src = this.img_noimage } }}
            @load=${() => {
              this._placeholder = false;
-diff -ruN --strip-trailing-cr a/web/static/components/utility/utility.js b/web/static/components/utility/utility.js
+diff -ruN a/web/static/components/utility/utility.js b_base/web/static/components/utility/utility.js
 --- a/web/static/components/utility/utility.js	2026-09-07 16:33:58.912483600 +0800
-+++ b/web/static/components/utility/utility.js	2026-09-07 16:35:04.921049700 +0800
++++ b_base/web/static/components/utility/utility.js	2026-09-08 16:23:46.149060200 +0800
 @@ -35,6 +35,14 @@
      }
    }
