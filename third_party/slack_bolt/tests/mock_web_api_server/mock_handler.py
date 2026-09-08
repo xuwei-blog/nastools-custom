@@ -22,8 +22,9 @@ OAUTH_V2_ACCESS_RESPONSE = json.dumps(
     {
         "ok": True,
         # 分段写token，删除注释就行
-        "access_token": 
-        #"xoxb-17653672481-19874698323
+        #"access_token": 
+        #"xoxb-17653672481
+        #重新拼接把-19874698323
         #-pdFZKVeTuE8sk7oOcBrzbqgy",
         "token_type": "bot",
         "scope": "chat:write,commands",
