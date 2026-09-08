@@ -45,8 +45,12 @@ COPY config ${WORKDIR}/config
 COPY docker ${WORKDIR}/docker
 COPY db_scripts ${WORKDIR}/db_scripts
 COPY third_party ${WORKDIR}/third_party
+COPY patch ${WORKDIR}/patch
 COPY run.py config.py log.py version.py check_config.py build_sites.py dbscript_gen.py ${WORKDIR}/
 COPY requirements.txt third_party.txt package_list.txt ${WORKDIR}/
+# 豆瓣防盗链修复 modify by vv 20260908 starting
+RUN git apply patch/douban-image-fix.patch
+# 豆瓣防盗链修复 modify by vv 20260908 ending  
 EXPOSE 3000
 VOLUME ["/config"]
 ENTRYPOINT ["/nas-tools/docker/entrypoint.sh"]

@@ -64,7 +64,7 @@ def get_run_config():
     """
     获取运行配置
     """
-    _web_host = "::"
+    _web_host = "0.0.0.0"
     _web_port = 3000
     _ssl_cert = None
     _ssl_key = None
@@ -72,8 +72,8 @@ def get_run_config():
 
     app_conf = Config().get_config('app')
     if app_conf:
-        if app_conf.get("web_host"):
-            _web_host = app_conf.get("web_host").replace('[', '').replace(']', '')
+    #    if app_conf.get("web_host"):
+    #        _web_host = app_conf.get("web_host").replace('[', '').replace(']', '')
         _web_port = int(app_conf.get('web_port')) if str(app_conf.get('web_port', '')).isdigit() else 3000
         _ssl_cert = app_conf.get('ssl_cert')
         _ssl_key = app_conf.get('ssl_key')

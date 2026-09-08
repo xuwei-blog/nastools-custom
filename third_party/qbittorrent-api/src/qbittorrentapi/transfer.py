@@ -1,0 +1,442 @@
+from __future__ import annotations
+
+from collections.abc import Iterable
+
+from qbittorrentapi._version_support import v
+from qbittorrentapi.app import AppAPIMixIn
+from qbittorrentapi.definitions import (
+    APIKwargsT,
+    APINames,
+    ClientCache,
+    Dictionary,
+    JsonValueT,
+)
+
+
+class TransferInfoDictionary(Dictionary[JsonValueT]):
+    """
+    Response to :meth:`~TransferAPIMixIn.transfer_info`
+
+    Definition: `<https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0)#user-content-get-global-transfer-info>`_
+    """  # noqa: E501
+
+
+class TransferSpeedLimitsDictionary(Dictionary[int]):
+    """Response to :meth:`~TransferAPIMixIn.transfer_speed_limits`"""
+
+
+class TransferAPIMixIn(AppAPIMixIn):
+    """
+    Implementation of all ``Transfer`` API methods.
+
+    :Usage:
+        >>> from qbittorrentapi import Client
+        >>> client = Client(host="localhost:8080", username="admin", password="adminadmin")
+        >>> transfer_info = client.transfer_info()
+        >>> client.transfer_set_download_limit(limit=1024000)
+    """  # noqa: E501
+
+    @property
+    def transfer(self) -> Transfer:
+        """
+        Allows for transparent interaction with Transfer endpoints.
+
+        See Transfer class for usage.
+        """
+        if self._transfer is None:
+            self._transfer = Transfer(client=self)
+        return self._transfer
+
+    def transfer_info(self, **kwargs: APIKwargsT) -> TransferInfoDictionary:
+        """Retrieves the global transfer info found in qBittorrent status bar."""
+        return self._get_cast(
+            _name=APINames.Transfer,
+            _method="info",
+            response_class=TransferInfoDictionary,
+            **kwargs,
+        )
+
+    def transfer_speed_limits_mode(self, **kwargs: APIKwargsT) -> str:
+        """Returns ``1`` if alternative speed limits are currently enabled, ``0``
+        otherwise."""
+        return self._get_cast(
+            _name=APINames.Transfer,
+            _method="speedLimitsMode",
+            response_class=str,
+            **kwargs,
+        )
+
+    transfer_speedLimitsMode = transfer_speed_limits_mode
+
+    def transfer_set_speed_limits_mode(
+        self,
+        intended_state: bool | None = None,
+        **kwargs: APIKwargsT,
+    ) -> None:
+        """
+        Sets whether alternative speed limits are enabled.
+
+        :param intended_state: True to enable alt speed and False to disable. Leaving
+            None will toggle the current state.
+        """
+        if (
+            intended_state is None
+            or v(self.app_web_api_version()) < v("2.8.14")
+            and ((self.transfer.speed_limits_mode == "1") is not bool(intended_state))
+        ):
+            self._post(
+                _name=APINames.Transfer,
+                _method="toggleSpeedLimitsMode",
+                **kwargs,
+            )
+        else:
+            data = {"mode": 1 if intended_state else 0}
+            self._post(
+                _name=APINames.Transfer,
+                _method="setSpeedLimitsMode",
+                data=data,
+                **kwargs,
+            )
+
+    transfer_setSpeedLimitsMode = transfer_set_speed_limits_mode
+    transfer_toggleSpeedLimitsMode = transfer_set_speed_limits_mode
+    transfer_toggle_speed_limits_mode = transfer_set_speed_limits_mode
+
+    def transfer_download_limit(self, **kwargs: APIKwargsT) -> int:
+        """Retrieves download limit; 0 is unlimited."""
+        return self._get_cast(
+            _name=APINames.Transfer,
+            _method="downloadLimit",
+            response_class=int,
+            **kwargs,
+        )
+
+    transfer_downloadLimit = transfer_download_limit
+
+    def transfer_upload_limit(self, **kwargs: APIKwargsT) -> int:
+        """Retrieves upload limit; 0 is unlimited."""
+        return self._get_cast(
+            _name=APINames.Transfer,
+            _method="uploadLimit",
+            response_class=int,
+            **kwargs,
+        )
+
+    transfer_uploadLimit = transfer_upload_limit
+
+    def transfer_set_download_limit(
+        self,
+        limit: str | int | None = None,
+        **kwargs: APIKwargsT,
+    ) -> None:
+        """
+        Set the global download limit in bytes/second.
+
+        :param limit: download limit in bytes/second (0 or -1 for no limit)
+        """
+        data = {"limit": limit}
+        self._post(
+            _name=APINames.Transfer,
+            _method="setDownloadLimit",
+            data=data,
+            **kwargs,
+        )
+
+    transfer_setDownloadLimit = transfer_set_download_limit
+
+    def transfer_set_upload_limit(
+        self,
+        limit: str | int | None = None,
+        **kwargs: APIKwargsT,
+    ) -> None:
+        """
+        Set the global download limit in bytes/second.
+
+        :param limit: upload limit in bytes/second (0 or -1 for no limit)
+        """
+        data = {"limit": limit}
+        self._post(
+            _name=APINames.Transfer,
+            _method="setUploadLimit",
+            data=data,
+            **kwargs,
+        )
+
+    transfer_setUploadLimit = transfer_set_upload_limit
+
+    def transfer_speed_limits(
+        self, **kwargs: APIKwargsT
+    ) -> TransferSpeedLimitsDictionary:
+        """
+        Retrieve the global and alternative speed limits in bytes/second.
+
+        This method was introduced with qBittorrent v5.3.0 (Web API v2.16.0).
+
+        Returns ``up_limit``, ``dl_limit``, ``alt_up_limit``, and ``alt_dl_limit``.
+        """
+        return self._get_cast(
+            _name=APINames.Transfer,
+            _method="getSpeedLimits",
+            response_class=TransferSpeedLimitsDictionary,
+            version_introduced="2.16.0",
+            **kwargs,
+        )
+
+    transfer_getSpeedLimits = transfer_speed_limits
+
+    def transfer_set_speed_limits(
+        self,
+        upload_limit: str | int | None = None,
+        download_limit: str | int | None = None,
+        alt_upload_limit: str | int | None = None,
+        alt_download_limit: str | int | None = None,
+        **kwargs: APIKwargsT,
+    ) -> None:
+        """
+        Set the global and alternative speed limits in bytes/second.
+
+        This method was introduced with qBittorrent v5.3.0 (Web API v2.16.0).
+
+        All four limits are required by qBittorrent.
+
+        :param upload_limit: global upload limit in bytes/second
+        :param download_limit: global download limit in bytes/second
+        :param alt_upload_limit: alternative upload limit in bytes/second
+        :param alt_download_limit: alternative download limit in bytes/second
+        """
+        data = {
+            "up_limit": upload_limit,
+            "dl_limit": download_limit,
+            "alt_up_limit": alt_upload_limit,
+            "alt_dl_limit": alt_download_limit,
+        }
+        self._post(
+            _name=APINames.Transfer,
+            _method="setSpeedLimits",
+            data=data,
+            version_introduced="2.16.0",
+            **kwargs,
+        )
+
+    transfer_setSpeedLimits = transfer_set_speed_limits
+
+    def transfer_ban_peers(
+        self,
+        peers: str | Iterable[str] | None = None,
+        **kwargs: APIKwargsT,
+    ) -> None:
+        """
+        Ban one or more peers.
+
+        This method was introduced with qBittorrent v4.2.0 (Web API v2.3.0).
+
+        :param peers: one or more peers to ban. each peer should take the form
+            'host:port'
+        """
+        data = {"peers": self._list2string(peers, "|")}
+        self._post(
+            _name=APINames.Transfer,
+            _method="banPeers",
+            data=data,
+            version_introduced="2.3.0",
+            **kwargs,
+        )
+
+    transfer_banPeers = transfer_ban_peers
+
+    def transfer_pause_session(self, **kwargs: APIKwargsT) -> None:
+        """
+        Pause the BitTorrent session.
+
+        This method was introduced with qBittorrent v5.3.0 (Web API v2.16.2).
+        """
+        self._post(
+            _name=APINames.Transfer,
+            _method="pauseSession",
+            version_introduced="2.16.2",
+            **kwargs,
+        )
+
+    transfer_pauseSession = transfer_pause_session
+
+    def transfer_resume_session(self, **kwargs: APIKwargsT) -> None:
+        """
+        Resume the BitTorrent session.
+
+        This method was introduced with qBittorrent v5.3.0 (Web API v2.16.2).
+        """
+        self._post(
+            _name=APINames.Transfer,
+            _method="resumeSession",
+            version_introduced="2.16.2",
+            **kwargs,
+        )
+
+    transfer_resumeSession = transfer_resume_session
+
+
+class Transfer(ClientCache[TransferAPIMixIn]):
+    """
+    Allows interaction with the ``Transfer`` API endpoints.
+
+    :Usage:
+        >>> from qbittorrentapi import Client
+        >>> client = Client(host="localhost:8080", username="admin", password="adminadmin")
+        >>> # these are all the same attributes that are available as named in the
+        >>> #  endpoints or the more pythonic names in Client (with or without 'transfer_' prepended)
+        >>> transfer_info = client.transfer.info
+        >>> # access and set download/upload limits as attributes
+        >>> dl_limit = client.transfer.download_limit
+        >>> # this updates qBittorrent in real-time
+        >>> client.transfer.download_limit = 1024000
+        >>> # update speed limits mode to alternate or not
+        >>> client.transfer.speedLimitsMode = True
+    """  # noqa: E501
+
+    @property
+    def info(self) -> TransferInfoDictionary:
+        """Implements :meth:`~TransferAPIMixIn.transfer_info`."""
+        return self._client.transfer_info()
+
+    @property
+    def speed_limits_mode(self) -> str:
+        """Implements :meth:`~TransferAPIMixIn.transfer_speed_limits_mode`."""
+        return self._client.transfer_speed_limits_mode()
+
+    @speed_limits_mode.setter
+    def speed_limits_mode(self, val: bool) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_set_speed_limits_mode`."""
+        self.set_speed_limits_mode(intended_state=val)
+
+    @property
+    def speedLimitsMode(self) -> str:
+        """Implements :meth:`~TransferAPIMixIn.transfer_speed_limits_mode`."""
+        return self._client.transfer_speed_limits_mode()
+
+    @speedLimitsMode.setter
+    def speedLimitsMode(self, val: bool) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_set_speed_limits_mode`."""
+        self.set_speed_limits_mode(intended_state=val)
+
+    def set_speed_limits_mode(
+        self,
+        intended_state: bool | None = None,
+        **kwargs: APIKwargsT,
+    ) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_set_speed_limits_mode`."""
+        return self._client.transfer_set_speed_limits_mode(
+            intended_state=intended_state,
+            **kwargs,
+        )
+
+    setSpeedLimitsMode = set_speed_limits_mode
+    toggleSpeedLimitsMode = set_speed_limits_mode
+    toggle_speed_limits_mode = set_speed_limits_mode
+
+    @property
+    def download_limit(self) -> int:
+        """Implements :meth:`~TransferAPIMixIn.transfer_download_limit`."""
+        return self._client.transfer_download_limit()
+
+    @download_limit.setter
+    def download_limit(self, val: int | str) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_set_download_limit`."""
+        self.set_download_limit(limit=val)
+
+    @property
+    def downloadLimit(self) -> int:
+        """Implements :meth:`~TransferAPIMixIn.transfer_download_limit`."""
+        return self._client.transfer_download_limit()
+
+    @downloadLimit.setter
+    def downloadLimit(self, val: int | str) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_set_download_limit`."""
+        self.set_download_limit(limit=val)
+
+    @property
+    def upload_limit(self) -> int:
+        """Implements :meth:`~TransferAPIMixIn.transfer_upload_limit`."""
+        return self._client.transfer_upload_limit()
+
+    @upload_limit.setter
+    def upload_limit(self, val: int | str) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_set_upload_limit`."""
+        self.set_upload_limit(limit=val)
+
+    @property
+    def uploadLimit(self) -> int:
+        """Implements :meth:`~TransferAPIMixIn.transfer_upload_limit`."""
+        return self._client.transfer_upload_limit()
+
+    @uploadLimit.setter
+    def uploadLimit(self, val: int | str) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_set_upload_limit`."""
+        self.set_upload_limit(limit=val)
+
+    def set_download_limit(
+        self,
+        limit: str | int | None = None,
+        **kwargs: APIKwargsT,
+    ) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_set_download_limit`."""
+        return self._client.transfer_set_download_limit(limit=limit, **kwargs)
+
+    setDownloadLimit = set_download_limit
+
+    def set_upload_limit(
+        self,
+        limit: str | int | None = None,
+        **kwargs: APIKwargsT,
+    ) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_set_upload_limit`."""
+        return self._client.transfer_set_upload_limit(limit=limit, **kwargs)
+
+    setUploadLimit = set_upload_limit
+
+    @property
+    def speed_limits(self) -> TransferSpeedLimitsDictionary:
+        """Implements :meth:`~TransferAPIMixIn.transfer_speed_limits`."""
+        return self._client.transfer_speed_limits()
+
+    getSpeedLimits = speed_limits
+
+    def set_speed_limits(
+        self,
+        upload_limit: str | int | None = None,
+        download_limit: str | int | None = None,
+        alt_upload_limit: str | int | None = None,
+        alt_download_limit: str | int | None = None,
+        **kwargs: APIKwargsT,
+    ) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_set_speed_limits`."""
+        return self._client.transfer_set_speed_limits(
+            upload_limit=upload_limit,
+            download_limit=download_limit,
+            alt_upload_limit=alt_upload_limit,
+            alt_download_limit=alt_download_limit,
+            **kwargs,
+        )
+
+    setSpeedLimits = set_speed_limits
+
+    def ban_peers(
+        self,
+        peers: str | Iterable[str] | None = None,
+        **kwargs: APIKwargsT,
+    ) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_ban_peers`."""
+        self._client.transfer_ban_peers(peers=peers, **kwargs)
+
+    banPeers = ban_peers
+
+    def pause_session(self, **kwargs: APIKwargsT) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_pause_session`."""
+        self._client.transfer_pause_session(**kwargs)
+
+    pauseSession = pause_session
+
+    def resume_session(self, **kwargs: APIKwargsT) -> None:
+        """Implements :meth:`~TransferAPIMixIn.transfer_resume_session`."""
+        self._client.transfer_resume_session(**kwargs)
+
+    resumeSession = resume_session

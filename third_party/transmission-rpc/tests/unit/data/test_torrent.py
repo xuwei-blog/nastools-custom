@@ -1,0 +1,356 @@
+import calendar
+import datetime
+import time
+from typing import Any
+
+import pytest
+
+import transmission_rpc
+import transmission_rpc.constants
+import transmission_rpc.utils
+from tests.util import check_properties
+from transmission_rpc.torrent import FileStat, Status, Torrent, get_status
+
+
+def assert_property_exception(exception: type[Exception], ob: Any, prop: str) -> None:
+    """Helper to assert that accessing a property raises a specific exception."""
+    with pytest.raises(exception):
+        getattr(ob, prop)
+
+
+def test_torrent_missing_optional_fields() -> None:
+    """Verify Torrent initialization handles missing optional fields (priorities, wanted) gracefully."""
+    # files present but priorities/wanted missing
+    fields = {
+        "id": 1,
+        "files": [{"length": 1, "name": "f", "bytes_completed": 0}],
+    }
+    t = Torrent(fields=fields)
+    assert len(t.get_files()) == 1
+    assert t.get_files()[0].priority is None
+    assert t.get_files()[0].selected is None
+
+
+def test_torrent_status_and_idle_mode_mapping() -> None:
+    """Verify `seed_idle_mode` enum conversion and `status` property string mapping."""
+    fields = {
+        "id": 1,
+        "seed_idle_mode": 0,  # global
+        "status": 4,  # downloading
+    }
+    t = Torrent(fields=fields)
+    assert t.seed_idle_mode.value == 0
+    # Use public API 'status' which returns a Status(str) enum
+    assert t.status == "downloading"
+
+
+def test_torrent_defaults_and_basic_props() -> None:
+    """Verify default values, basic properties, and error handling for missing fields."""
+    fields = {
+        "id": 1,
+        "file_count": 5,
+        "primary_mime_type": "text/plain",
+        "hash_string": "hash",
+        "files": [{"length": 100, "name": "f1", "bytes_completed": 100}],
+        "pieces": "",
+    }
+    t = Torrent(fields=fields)
+
+    # Basic properties
+    assert t.file_count == 5
+    assert t.primary_mime_type == "text/plain"
+
+    file_stat = FileStat(fields={"bytes_completed": 100})
+    assert file_stat.bytes_completed == 100
+    assert t.hash_string == "hash"
+    assert t.info_hash == "hash"
+    assert not hasattr(FileStat, "bytesCompleted")
+    assert not hasattr(Torrent, "hashString")
+    assert not hasattr(Torrent, "into_hash")
+
+    # get_files defaults (when priorities/wanted are missing)
+    files = t.get_files()
+    assert len(files) == 1
+    assert files[0].priority is None
+    assert files[0].selected is None
+
+    # pieces
+    assert t.pieces is not None
+
+    # Init missing id
+    with pytest.raises(ValueError, match="requires field 'id'"):
+        Torrent(fields={})
+
+    # Minimal fields (asserting exceptions)
+    torrent_minimal = transmission_rpc.Torrent(fields={"id": 42})
+    assert torrent_minimal.id == 42
+    assert_property_exception(KeyError, torrent_minimal, "status")
+    assert_property_exception(KeyError, torrent_minimal, "progress")
+    assert_property_exception(KeyError, torrent_minimal, "ratio")
+    assert_property_exception(KeyError, torrent_minimal, "eta")
+    assert_property_exception(KeyError, torrent_minimal, "activity_date")
+    assert_property_exception(KeyError, torrent_minimal, "added_date")
+    assert_property_exception(KeyError, torrent_minimal, "start_date")
+    assert_property_exception(KeyError, torrent_minimal, "done_date")
+
+    with pytest.raises(KeyError):
+        torrent_minimal.format_eta()
+    with pytest.raises(KeyError):
+        torrent_minimal.get_files()
+
+
+def test_torrent_progress_and_availability() -> None:
+    """Verify calculations for progress, availability, and ratio, including division by zero checks."""
+    fields = {
+        "id": 1,
+        "size_when_done": 100,
+        "left_until_done": 50,
+        "upload_ratio": 1.0,
+        "percent_done": 0.5,
+        "total_size": 100,
+        "file_stats": [{"bytes_completed": 100, "wanted": True, "priority": 1}],
+        "desired_available": 0,
+    }
+    t = Torrent(fields=fields)
+
+    # available
+    # bytes_done = 100
+    # bytes_avail = 0 + 100 = 100
+    # ratio = 100 / 100 = 1.0 => 100.0
+    assert t.available == 100.0
+
+    # Ratio
+    assert t.ratio == 1.0
+
+    # Progress ZeroDivisionError check
+    # Create new fields dict with percentDone missing to trigger calculation
+    # and sizeWhenDone/leftUntilDone as 0
+    fields_zero = {
+        "id": 1,
+        "size_when_done": 0,
+        "left_until_done": 0,
+    }
+    t_zero = Torrent(fields=fields_zero)
+    # Should catch ZeroDivisionError and return 0.0
+    assert t_zero.progress == 0.0
+
+
+def test_torrent_progress_never_rounds_up_to_complete() -> None:
+    """Verify an unfinished torrent never reports 100.0."""
+    almost = Torrent(fields={"id": 1, "percent_done": 0.999996})
+    assert almost.progress == 99.99
+
+    # Same, via the size_when_done fallback.
+    almost_fallback = Torrent(fields={"id": 1, "size_when_done": 1_000_000, "left_until_done": 4})
+    assert almost_fallback.progress == 99.99
+
+    # 100.0 must still be reachable.
+    assert Torrent(fields={"id": 1, "percent_done": 1.0}).progress == 100.0
+    assert Torrent(fields={"id": 1, "size_when_done": 1_000_000, "left_until_done": 0}).progress == 100.0
+
+
+def test_tracker_list_preserves_tiers() -> None:
+    raw = "https://a.example/announce\nhttps://b.example/announce\n\nhttps://backup.example/announce\n"
+
+    torrent = Torrent(fields={"id": 1, "tracker_list": raw})
+
+    assert torrent.tracker_list == [
+        ["https://a.example/announce", "https://b.example/announce"],
+        ["https://backup.example/announce"],
+    ]
+
+
+def test_torrent_representation() -> None:
+    """Verify string representations, ETA formatting, and date handling."""
+    fields = {
+        "id": 1,
+        "name": "test",
+        "hash_string": "hash",
+        "eta": -1,
+    }
+    t = Torrent(fields=fields)
+
+    # __str__ and __repr__
+    assert str(t) == "<transmission_rpc.Torrent 'test'>"
+    assert repr(t) == "<transmission_rpc.Torrent hashString='hash'>"
+
+    # format_eta edge cases
+    assert t.format_eta() == "not available"
+
+    fields_unknown = fields.copy()
+    fields_unknown["eta"] = -2
+    t_unknown = Torrent(fields=fields_unknown)
+    assert t_unknown.format_eta() == "unknown"
+
+    fields_valid = fields.copy()
+    fields_valid["eta"] = 3600
+    t_valid = Torrent(fields=fields_valid)
+    assert t_valid.format_eta() == "0 01:00:00"
+
+    # Date fields
+    data_full = {
+        "id": 1,
+        "status": 4,
+        "size_when_done": 1000,
+        "left_until_done": 500,
+        "uploaded_ever": 1000,
+        "downloaded_ever": 2000,
+        "upload_ratio": 0.5,
+        "eta": 3600,
+        "percent_done": 0.5,
+        "activity_date": calendar.timegm((2008, 12, 11, 11, 15, 30, 0, 0, -1)),
+        "added_date": calendar.timegm((2008, 12, 11, 8, 5, 10, 0, 0, -1)),
+        "start_date": calendar.timegm((2008, 12, 11, 9, 10, 5, 0, 0, -1)),
+        "done_date": calendar.timegm((2008, 12, 11, 10, 0, 15, 0, 0, -1)),
+        "date_created": calendar.timegm((2008, 12, 11, 7, 0, 0, 0, 0, -1)),
+        "availability": [1, 1, 0, -1],
+        "priorities": [1, 0, -1],
+    }
+
+    torrent_dates = transmission_rpc.Torrent(fields=data_full)
+    assert torrent_dates.id == 1
+    assert torrent_dates.activity_date == datetime.datetime(2008, 12, 11, 11, 15, 30, tzinfo=datetime.timezone.utc)
+    assert torrent_dates.added_date == datetime.datetime(2008, 12, 11, 8, 5, 10, tzinfo=datetime.timezone.utc)
+    assert torrent_dates.start_date == datetime.datetime(2008, 12, 11, 9, 10, 5, tzinfo=datetime.timezone.utc)
+    assert torrent_dates.done_date == datetime.datetime(2008, 12, 11, 10, 0, 15, tzinfo=datetime.timezone.utc)
+    assert torrent_dates.date_created == datetime.datetime(2008, 12, 11, 7, 0, 0, tzinfo=datetime.timezone.utc)
+    assert torrent_dates.availability == [1, 1, 0, -1]
+    assert torrent_dates.priorities == [
+        transmission_rpc.constants.Priority.High,
+        transmission_rpc.constants.Priority.Normal,
+        transmission_rpc.constants.Priority.Low,
+    ]
+
+    # Zero date check
+    data_zero_date = {
+        "id": 1,
+        "activity_date": time.mktime((2008, 12, 11, 11, 15, 30, 0, 0, -1)),
+        "added_date": time.mktime((2008, 12, 11, 8, 5, 10, 0, 0, -1)),
+        "start_date": time.mktime((2008, 12, 11, 9, 10, 5, 0, 0, -1)),
+        "done_date": 0,
+    }
+
+    torrent_zero = transmission_rpc.Torrent(fields=data_zero_date)
+    assert torrent_zero.done_date is None
+
+
+def test_torrent_properties_access() -> None:
+    """Verify that all properties of a Torrent instance can be accessed without error."""
+    t = Torrent(fields={"id": 1})
+    check_properties(Torrent, t)
+
+
+def test_file_stat_properties_access() -> None:
+    """Verify that all properties of a FileStat instance can be accessed without error."""
+    f = FileStat(fields={})
+    check_properties(FileStat, f)
+
+
+def test_status_mapping() -> None:
+    """Verify that Status objects correctly report boolean states (e.g., stopped, checking) and string representation."""
+    s = Status("checking")
+    assert s.checking
+    assert not s.stopped
+
+    s = Status("check pending")
+    assert s.check_pending
+
+    s = Status("downloading")
+    assert s.downloading
+
+    s = Status("download pending")
+    assert s.download_pending
+
+    s = Status("seeding")
+    assert s.seeding
+
+    s = Status("seed pending")
+    assert s.seed_pending
+
+    s = Status("stopped")
+    assert s.stopped is True
+    assert s.check_pending is False
+    assert str(s) == "stopped"
+
+    check_properties(Status, s)
+
+
+def test_eta_and_date_handling() -> None:
+    """Verify formatting of ETA, handling of idle ETA, and conversion of epoch timestamps to datetime objects."""
+    fields = {
+        "id": 1,
+        "eta": -1,
+        "eta_idle": -1,
+        "pieces": "AA==",  # base64 for 0x00
+        "file_stats": [],
+        "files": [],
+        "priorities": [],
+        "wanted": [],
+        "peers": [],
+        "trackers": [],
+        "tracker_stats": [],
+        "tracker_list": "",
+        "status": 0,
+        "activity_date": 0,
+        "added_date": 0,
+        "start_date": 0,
+        "done_date": 0,
+    }
+    t = Torrent(fields=fields)
+    assert t.format_eta() == "not available"
+    assert t.eta is None
+    assert t.eta_idle is None
+    assert t.done_date is None
+
+    fields_unknown = fields.copy()
+    fields_unknown["eta"] = -2
+    t = Torrent(fields=fields_unknown)
+    assert t.format_eta() == "unknown"
+
+    fields_valid = fields.copy()
+    fields_valid["eta"] = 3600
+    fields_valid["eta_idle"] = 60
+    fields_valid["done_date"] = 1000000000
+    t = Torrent(fields=fields_valid)
+    assert str(t.eta) == "1:00:00"
+    assert str(t.eta_idle) == "0:01:00"
+    assert t.done_date is not None
+
+
+def test_status_unknown() -> None:
+    """Verify that `get_status` returns a formatted unknown string for invalid status codes."""
+    assert get_status(999) == "unknown status 999"
+
+
+def test_activity_date_handles_zero_value() -> None:
+    """
+    Verify that a Torrent object correctly handles the 'activityDate' field being 0 (non-active).
+    """
+    data = {
+        "id": 1,
+        "activity_date": 0,
+    }
+
+    torrent = transmission_rpc.Torrent(fields=data)
+    assert torrent.activity_date
+
+
+def test_jsonrpc_2_torrent_fields() -> None:
+    torrent = transmission_rpc.Torrent(
+        fields={
+            "id": 1,
+            "bytes_completed": [12],
+            "sequential_download_from_piece": 4,
+            "tracker_stats": [{"downloader_count": 3}],
+            "webseeds_ex": [
+                {"url": "https://example.com/file", "is_downloading": True, "download_bytes_per_second": 100}
+            ],
+        }
+    )
+
+    assert torrent.bytes_completed == [12]
+    assert torrent.sequential_download_from_piece == 4
+    assert torrent.tracker_stats[0].downloader_count == 3
+    assert torrent.webseeds_ex[0].url == "https://example.com/file"
+    assert torrent.webseeds_ex[0].is_downloading is True
+    assert torrent.webseeds_ex[0].download_bytes_per_second == 100
